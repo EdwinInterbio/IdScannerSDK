@@ -16,7 +16,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class FaceScannerActivity : AppCompatActivity() {
+class FaceScannerActivity : androidx.activity.ComponentActivity() {
 
     private lateinit var cameraExecutor: ExecutorService
     private var imageCapture: ImageCapture? = null
