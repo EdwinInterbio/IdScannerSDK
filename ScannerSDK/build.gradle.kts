@@ -48,6 +48,12 @@ dependencies {
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
+
+    implementation("com.google.mlkit:face-detection:16.1.6")
+    val cameraxVersion = "1.3.4"
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
 }
 
 // GUNAKAN CARA EKSPLISIT INI UNTUK MENGHINDARI ERROR:

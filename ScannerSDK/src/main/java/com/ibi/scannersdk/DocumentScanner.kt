@@ -11,6 +11,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 
 class DocumentScanner(private val activity: ComponentActivity) {
     private var onResultCallback: ((String?) -> Unit)? = null
+    private var onFaceResultCallback: ((String?) -> Unit)? = null
 
     private val scannerLauncher: ActivityResultLauncher<IntentSenderRequest> =
         activity.registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -48,5 +49,22 @@ class DocumentScanner(private val activity: ComponentActivity) {
             .addOnFailureListener {
                 onResultCallback?.invoke(null)
             }
+    }
+
+    private val faceLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val base64 = result.data?.getStringExtra("BASE64_FACE")
+            onFaceResultCallback?.invoke(base64)
+        } else {
+            onFaceResultCallback?.invoke(null)
+        }
+    }
+
+    fun startFaceScan(callback: (String?) -> Unit) {
+        this.onFaceResultCallback = callback
+        val intent = Intent(activity, FaceScannerActivity::class.java)
+        faceLauncher.launch(intent)
     }
 }
