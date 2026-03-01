@@ -60,9 +60,9 @@ dependencies {
 configure<PublishingExtension> {
     publications {
         register<MavenPublication>("release") {
-            groupId = "com.github.username_anda"
+            groupId = "com.github.EdwinInterbio"
             artifactId = "scannersdk"
-            version = "1.0.0"
+            version = "1.0.1"
 
             // Menggunakan project.afterEvaluate agar lebih stabil
             project.afterEvaluate {
