@@ -3,7 +3,6 @@ package com.ibi.scannersdk
 import android.app.Activity
 import android.content.Intent
 import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -17,48 +16,41 @@ class DocumentScanner(
     private var onResultCallback: ((String?) -> Unit)? = null
     private var onFaceResultCallback: ((String?) -> Unit)? = null
 
-    private lateinit var scannerLauncher: ActivityResultLauncher<IntentSenderRequest>
-    private lateinit var faceLauncher: ActivityResultLauncher<Intent>
+    // ✅ Launcher langsung register saat object dibuat
+    private val scannerLauncher =
+        activity.registerForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult()
+        ) { result ->
 
-    /**
-     * WAJIB dipanggil di onCreate()
-     */
-    fun register() {
+            if (result.resultCode == Activity.RESULT_OK) {
+                val scanResult =
+                    GmsDocumentScanningResult.fromActivityResultIntent(result.data)
 
-        scannerLauncher =
-            activity.registerForActivityResult(
-                ActivityResultContracts.StartIntentSenderForResult()
-            ) { result ->
+                val imageUri = scanResult?.pages?.get(0)?.imageUri
 
-                if (result.resultCode == Activity.RESULT_OK) {
-                    val scanResult =
-                        GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-
-                    val imageUri = scanResult?.pages?.get(0)?.imageUri
-
-                    if (imageUri != null) {
-                        val base64 = ImageUtils.uriToBase64(activity, imageUri)
-                        onResultCallback?.invoke(base64)
-                    } else {
-                        onResultCallback?.invoke(null)
-                    }
+                if (imageUri != null) {
+                    val base64 = ImageUtils.uriToBase64(activity, imageUri)
+                    onResultCallback?.invoke(base64)
                 } else {
                     onResultCallback?.invoke(null)
                 }
+            } else {
+                onResultCallback?.invoke(null)
             }
+        }
 
-        faceLauncher =
-            activity.registerForActivityResult(
-                ActivityResultContracts.StartActivityForResult()
-            ) { result ->
-                if (result.resultCode == Activity.RESULT_OK) {
-                    val base64 = result.data?.getStringExtra("BASE64_FACE")
-                    onFaceResultCallback?.invoke(base64)
-                } else {
-                    onFaceResultCallback?.invoke(null)
-                }
+    // ✅ Face launcher juga langsung register
+    private val faceLauncher =
+        activity.registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val base64 = result.data?.getStringExtra("BASE64_FACE")
+                onFaceResultCallback?.invoke(base64)
+            } else {
+                onFaceResultCallback?.invoke(null)
             }
-    }
+        }
 
     fun startScan(callback: (String?) -> Unit) {
         this.onResultCallback = callback
