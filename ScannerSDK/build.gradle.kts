@@ -62,7 +62,7 @@ configure<PublishingExtension> {
         register<MavenPublication>("release") {
             groupId = "com.github.EdwinInterbio"
             artifactId = "scannersdk"
-            version = "1.0.9"
+            version = "2.0.0"
 
             // Menggunakan project.afterEvaluate agar lebih stabil
             project.afterEvaluate {
