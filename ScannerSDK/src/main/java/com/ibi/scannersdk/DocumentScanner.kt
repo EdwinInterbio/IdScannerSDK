@@ -2,58 +2,26 @@ package com.ibi.scannersdk
 
 import android.app.Activity
 import android.content.Intent
-import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 
 class DocumentScanner(
-    private val activity: ComponentActivity
+    private val activity: Activity,
+    private val cardLauncher: ActivityResultLauncher<IntentSenderRequest>,
+    private val faceLauncher: ActivityResultLauncher<Intent>
 ) {
 
-    private var onResultCallback: ((String?) -> Unit)? = null
-    private var onFaceResultCallback: ((String?) -> Unit)? = null
+    private var cardCallback: ((String?) -> Unit)? = null
+    private var faceCallback: ((String?) -> Unit)? = null
 
-    // ✅ Launcher langsung register saat object dibuat
-    private val scannerLauncher =
-        activity.registerForActivityResult(
-            ActivityResultContracts.StartIntentSenderForResult()
-        ) { result ->
-
-            if (result.resultCode == Activity.RESULT_OK) {
-                val scanResult =
-                    GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-
-                val imageUri = scanResult?.pages?.get(0)?.imageUri
-
-                if (imageUri != null) {
-                    val base64 = ImageUtils.uriToBase64(activity, imageUri)
-                    onResultCallback?.invoke(base64)
-                } else {
-                    onResultCallback?.invoke(null)
-                }
-            } else {
-                onResultCallback?.invoke(null)
-            }
-        }
-
-    // ✅ Face launcher juga langsung register
-    private val faceLauncher =
-        activity.registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                val base64 = result.data?.getStringExtra("BASE64_FACE")
-                onFaceResultCallback?.invoke(base64)
-            } else {
-                onFaceResultCallback?.invoke(null)
-            }
-        }
-
-    fun startScan(callback: (String?) -> Unit) {
-        this.onResultCallback = callback
+    // =========================
+    // CARD SCANNER
+    // =========================
+    fun launchCardScanner(onResult: (String?) -> Unit) {
+        cardCallback = onResult
 
         val options = GmsDocumentScannerOptions.Builder()
             .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
@@ -65,18 +33,44 @@ class DocumentScanner(
 
         scanner.getStartScanIntent(activity)
             .addOnSuccessListener { intentSender ->
-                scannerLauncher.launch(
-                    IntentSenderRequest.Builder(intentSender).build()
-                )
+                val request = IntentSenderRequest.Builder(intentSender).build()
+                cardLauncher.launch(request)
             }
             .addOnFailureListener {
-                onResultCallback?.invoke(null)
+                cardCallback?.invoke(null)
             }
     }
 
-    fun startFaceScan(callback: (String?) -> Unit) {
-        this.onFaceResultCallback = callback
+    fun handleCardResult(resultCode: Int, data: Intent?) {
+        if (resultCode != Activity.RESULT_OK) {
+            cardCallback?.invoke(null)
+            return
+        }
+
+        val result =
+            GmsDocumentScanningResult.fromActivityResultIntent(data)
+
+        val uri = result?.pages?.firstOrNull()?.imageUri
+        cardCallback?.invoke(uri?.toString())
+    }
+
+    // =========================
+    // FACE SCANNER
+    // =========================
+    fun startFaceScan(onResult: (String?) -> Unit) {
+        faceCallback = onResult
+
         val intent = Intent(activity, FaceScannerActivity::class.java)
         faceLauncher.launch(intent)
+    }
+
+    fun handleFaceResult(resultCode: Int, data: Intent?) {
+        if (resultCode != Activity.RESULT_OK) {
+            faceCallback?.invoke(null)
+            return
+        }
+
+        val base64 = data?.getStringExtra("BASE64_FACE")
+        faceCallback?.invoke(base64)
     }
 }
