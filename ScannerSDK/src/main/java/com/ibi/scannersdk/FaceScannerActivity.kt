@@ -23,6 +23,14 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
     private var isCaptured = false
     private var stableFrameCount = 0
     private val REQUIRED_STABLE_FRAMES = 8
+    private var cameraProvider: ProcessCameraProvider? = null
+
+    private val detector by lazy {
+        val options = FaceDetectorOptions.Builder()
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .build()
+        FaceDetection.getClient(options)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,7 +55,8 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
     private fun startCamera(previewView: androidx.camera.view.PreviewView) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
+            cameraProvider = cameraProviderFuture.get()
+            val provider = cameraProvider ?: return@addListener
 
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
@@ -66,9 +75,9 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
                 }
 
             try {
-                cameraProvider.unbindAll()
+                provider.unbindAll()
                 // Gunakan LENS_FACING_FRONT untuk selfie wajah
-                cameraProvider.bindToLifecycle(
+                provider.bindToLifecycle(
                     this, CameraSelector.DEFAULT_FRONT_CAMERA, preview, imageCapture, imageAnalyzer
                 )
             } catch (e: Exception) { e.printStackTrace() }
@@ -86,12 +95,6 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
         if (mediaImage != null) {
             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
-            // Gunakan FAST mode untuk tracking yang lancar
-            val options = FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-                .build()
-
-            val detector = FaceDetection.getClient(options)
             detector.process(image)
                 .addOnSuccessListener { faces ->
                     if (faces.isNotEmpty()) {
@@ -111,6 +114,7 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
                                     putExtra("BASE64_FACE", base64)
                                 }
                                 setResult(RESULT_OK, resultIntent)
+                                cameraProvider?.unbindAll()
                                 finish()
                             }
                         } else {
@@ -222,11 +226,15 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        cameraProvider?.unbindAll()
         cameraExecutor.shutdown()
     }
 }
 
 class ScannerOverlayView(context: android.content.Context) : View(context) {
+    init {
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+    }
     private val paint = Paint().apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
