@@ -134,9 +134,34 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {
+        // 1. Resize Gambar (Misal: Max lebar/tinggi 640px agar tetap jelas tapi ringan)
+        val resizedBitmap = getResizedBitmap(bitmap, 640)
+
         val outputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-        return Base64.encodeToString(outputStream.toByteArray(), Base64.DEFAULT)
+
+        // 2. Compress Kualitas (Gunakan 60-70 untuk keseimbangan size vs kualitas)
+        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+
+        val byteArray = outputStream.toByteArray()
+
+        // Gunakan NO_WRAP agar string Base64 tidak mengandung karakter 'newline' (\n)
+        return Base64.encodeToString(byteArray, Base64.NO_WRAP)
+    }
+
+    // Fungsi Helper untuk Resize
+    private fun getResizedBitmap(image: Bitmap, maxSize: Int): Bitmap {
+        var width = image.width
+        var height = image.height
+
+        val bitmapRatio = width.toFloat() / height.toFloat()
+        if (bitmapRatio > 1) {
+            width = maxSize
+            height = (width / bitmapRatio).toInt()
+        } else {
+            height = maxSize
+            width = (height * bitmapRatio).toInt()
+        }
+        return Bitmap.createScaledBitmap(image, width, height, true)
     }
 
     // Helper untuk merubah ImageProxy ke Bitmap
