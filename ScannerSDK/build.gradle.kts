@@ -49,7 +49,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
 
-    implementation("com.google.mlkit:face-detection:16.1.6")
+    implementation("com.google.mlkit:face-detection:16.1.7")
     val cameraxVersion = "1.3.4"
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")

@@ -65,8 +65,13 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
 
     @OptIn(ExperimentalGetImage::class)
     private fun processImageProxy(imageProxy: ImageProxy) {
+        if (isCaptured) {
+            imageProxy.close()
+            return
+        }
+
         val mediaImage = imageProxy.image
-        if (mediaImage != null && !isCaptured) {
+        if (mediaImage != null) {
             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
             val options = FaceDetectorOptions.Builder()
@@ -76,33 +81,56 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
             val detector = FaceDetection.getClient(options)
             detector.process(image)
                 .addOnSuccessListener { faces ->
-                    if (faces.isNotEmpty()) {
-                        // WAJAH TERDETEKSI! Langsung Auto Capture
+                    // Jika wajah terdeteksi, ambil bitmap LANGSUNG dari frame ini (lebih cepat)
+                    if (faces.isNotEmpty() && !isCaptured) {
                         isCaptured = true
-                        takePhotoAndFinish()
+
+                        val bitmap = imageProxy.yuvToBitmap()
+                        val base64 = bitmapToBase64(bitmap)
+
+                        val resultIntent = android.content.Intent().apply {
+                            putExtra("BASE64_FACE", base64)
+                        }
+                        setResult(RESULT_OK, resultIntent)
+                        finish()
                     }
                 }
-                .addOnCompleteListener { imageProxy.close() }
+                .addOnCompleteListener {
+                    imageProxy.close()
+                }
         } else {
             imageProxy.close()
         }
     }
 
-    private fun takePhotoAndFinish() {
-        val imageCapture = imageCapture ?: return
-        imageCapture.takePicture(ContextCompat.getMainExecutor(this), object : ImageCapture.OnImageCapturedCallback() {
-            override fun onCaptureSuccess(image: ImageProxy) {
-                // Convert ImageProxy ke Base64 (Logika singkat)
-                val bitmap = image.toBitmap() // Extension function dibutuhkan
-                val base64 = bitmapToBase64(bitmap)
+    private fun ImageProxy.yuvToBitmap(): android.graphics.Bitmap {
+        val yBuffer = planes[0].buffer // Y
+        val vBuffer = planes[2].buffer // V
+        val uBuffer = planes[1].buffer // U
 
-                val resultIntent = android.content.Intent()
-                resultIntent.putExtra("BASE64_FACE", base64)
-                setResult(RESULT_OK, resultIntent)
-                finish()
-                image.close()
-            }
-        })
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + uSize + vSize)
+
+        yBuffer.get(nv21, 0, ySize)
+        vBuffer.get(nv21, ySize, vSize)
+        uBuffer.get(nv21, ySize + vSize, uSize)
+
+        val yuvImage = android.graphics.YuvImage(nv21, android.graphics.ImageFormat.NV21, this.width, this.height, null)
+        val out = java.io.ByteArrayOutputStream()
+        yuvImage.compressToJpeg(android.graphics.Rect(0, 0, yuvImage.width, yuvImage.height), 90, out)
+        val imageBytes = out.toByteArray()
+        val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+        // Putar bitmap sesuai orientasi sensor HP
+        val matrix = android.graphics.Matrix()
+        matrix.postRotate(this.imageInfo.rotationDegrees.toFloat())
+        // Mirroring karena kita pakai kamera depan
+        matrix.postScale(-1f, 1f, bitmap.width / 2f, bitmap.height / 2f)
+
+        return android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {
