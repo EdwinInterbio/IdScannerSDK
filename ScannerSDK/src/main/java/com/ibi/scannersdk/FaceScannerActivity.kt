@@ -1,11 +1,9 @@
 package com.ibi.scannersdk
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Base64
 import androidx.annotation.OptIn
-import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
@@ -15,18 +13,32 @@ import com.google.mlkit.vision.face.FaceDetectorOptions
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.graphics.*
+import android.view.View
 
 class FaceScannerActivity : androidx.activity.ComponentActivity() {
 
     private lateinit var cameraExecutor: ExecutorService
     private var imageCapture: ImageCapture? = null
     private var isCaptured = false
+    private var stableFrameCount = 0
+    private val REQUIRED_STABLE_FRAMES = 8
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Kita tidak pakai layout XML agar SDK lebih ringan, kita buat PreviewView secara kode
+
+        // Container utama
+        val rootLayout = android.widget.FrameLayout(this)
+
+        // 1. Preview Kamera
         val previewView = androidx.camera.view.PreviewView(this)
-        setContentView(previewView)
+        rootLayout.addView(previewView)
+
+        // 2. Overlay Kotak (Ditumpuk di atas kamera)
+        val overlayView = ScannerOverlayView(this)
+        rootLayout.addView(overlayView)
+
+        setContentView(rootLayout)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
         startCamera(previewView)
@@ -74,6 +86,7 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
         if (mediaImage != null) {
             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
+            // Gunakan FAST mode untuk tracking yang lancar
             val options = FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                 .build()
@@ -81,18 +94,32 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
             val detector = FaceDetection.getClient(options)
             detector.process(image)
                 .addOnSuccessListener { faces ->
-                    // Jika wajah terdeteksi, ambil bitmap LANGSUNG dari frame ini (lebih cepat)
-                    if (faces.isNotEmpty() && !isCaptured) {
-                        isCaptured = true
+                    if (faces.isNotEmpty()) {
+                        val face = faces[0] // Ambil wajah pertama
 
-                        val bitmap = imageProxy.yuvToBitmap()
-                        val base64 = bitmapToBase64(bitmap)
+                        // 1. CEK POSISI (Harus di tengah & ukurannya pas)
+                        if (isFaceValid(face, imageProxy.width, imageProxy.height)) {
+                            stableFrameCount++
 
-                        val resultIntent = android.content.Intent().apply {
-                            putExtra("BASE64_FACE", base64)
+                            // 2. CEK STABILITAS (Jika sudah diam selama X frame)
+                            if (stableFrameCount >= REQUIRED_STABLE_FRAMES && !isCaptured) {
+                                isCaptured = true
+                                val bitmap = imageProxy.yuvToBitmap()
+                                val base64 = bitmapToBase64(bitmap)
+
+                                val resultIntent = android.content.Intent().apply {
+                                    putExtra("BASE64_FACE", base64)
+                                }
+                                setResult(RESULT_OK, resultIntent)
+                                finish()
+                            }
+                        } else {
+                            // Reset counter jika wajah bergerak keluar area atau terlalu jauh
+                            stableFrameCount = 0
                         }
-                        setResult(RESULT_OK, resultIntent)
-                        finish()
+                    } else {
+                        // Reset counter jika wajah hilang
+                        stableFrameCount = 0
                     }
                 }
                 .addOnCompleteListener {
@@ -101,6 +128,27 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
         } else {
             imageProxy.close()
         }
+    }
+
+    private fun isFaceValid(face: com.google.mlkit.vision.face.Face, imgWidth: Int, imgHeight: Int): Boolean {
+        val bounds = face.boundingBox
+
+        // Karena koordinat ML Kit (ImageProxy) berbeda dengan koordinat Layar (PreviewView),
+        // kita gunakan rasio sederhana untuk mengecek apakah wajah di tengah.
+
+        val centerX = bounds.centerX()
+        val centerY = bounds.centerY()
+
+        // Margin aman: wajah harus berada di area tengah 40% - 60% dari frame
+        val horizontalCenter = centerX.toFloat() / imgWidth
+        val verticalCenter = centerY.toFloat() / imgHeight
+
+        val isCentered = horizontalCenter in 0.3..0.7 && verticalCenter in 0.3..0.7
+
+        // Ukuran wajah minimal 30% dari lebar frame agar tidak terlalu jauh
+        val faceWidthPercent = (bounds.width().toFloat() / imgWidth) * 100
+
+        return isCentered && faceWidthPercent > 30
     }
 
     private fun ImageProxy.yuvToBitmap(): android.graphics.Bitmap {
@@ -175,5 +223,45 @@ class FaceScannerActivity : androidx.activity.ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+    }
+}
+
+class ScannerOverlayView(context: android.content.Context) : View(context) {
+    private val paint = Paint().apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 8f
+        pathEffect = CornerPathEffect(20f) // Biar sudut kotak agak bulat
+    }
+
+    private val transparentPaint = Paint().apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    }
+
+    private val backgroundPaint = Paint().apply {
+        color = Color.parseColor("#80000000") // Hitam transparan 50%
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+
+        // 1. Gambar latar belakang gelap di seluruh layar
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
+
+        // 2. Tentukan ukuran kotak (misal 70% dari lebar layar)
+        val boxWidth = width * 0.7f
+        val boxHeight = boxWidth * 1.2f // Agak lonjong ke bawah untuk wajah
+
+        val left = (width - boxWidth) / 2
+        val top = (height - boxHeight) / 2
+        val right = left + boxWidth
+        val bottom = top + boxHeight
+        val rect = RectF(left, top, right, bottom)
+
+        // 3. Lubangi bagian tengah (kotak transparan)
+        canvas.drawRect(rect, transparentPaint)
+
+        // 4. Gambar garis pinggir kotak putih
+        canvas.drawRect(rect, paint)
     }
 }
