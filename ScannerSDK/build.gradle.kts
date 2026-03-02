@@ -12,6 +12,9 @@ android {
         minSdk = 24
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+        ndk {
+            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
+        }
     }
 
     // TAMBAHKAN INI: Agar Gradle tahu komponen apa yang mau di-publish
@@ -62,7 +65,7 @@ configure<PublishingExtension> {
         register<MavenPublication>("release") {
             groupId = "com.github.EdwinInterbio"
             artifactId = "scannersdk"
-            version = "2.0.0"
+            version = "2.0.1"
 
             // Menggunakan project.afterEvaluate agar lebih stabil
             project.afterEvaluate {
